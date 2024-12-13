@@ -16,17 +16,20 @@
 
 #include "sds_lib.h"
 #include "calcDist.h"
+#include "dataset.h"
+
 
 #define k 10
 
-using namespace std;
+using std::cout;
+using std::endl;
+
 
 class perf_counter
 {
 public:
      uint64_t tot, cnt, calls, time_cnt;
-     struct timeval T0,T1,res;
-     struct timezone tz;
+
      perf_counter() : tot(0), cnt(0), calls(0), time_cnt(0) {};
      inline void reset()
      {
@@ -47,80 +50,7 @@ public:
      };
 };
 
-void parseDataset(float* data)
-{
-	/*****
-	 * Parse dataset.csv file that for each selected movie contains the rating
-	 * for all the selected users.
-	 *****/
-
-	string DATASET_PATH = "dataset.csv";
-	ifstream inputFile(DATASET_PATH.c_str());
-
-	int numOfLines = 0;
-	int dataIndex = 0;
-	string line;
-	while (getline(inputFile, line))
-	{
-		istringstream iss(line);
-
-		vector<float> linePartsVector;
-		for (float i; iss >> i;) {
-			linePartsVector.push_back(i);
-			if (iss.peek() == ',')
-				iss.ignore();
-		}
-
-		if (numOfLines == 0) {
-			numOfLines++;
-			continue;
-		}
-
-		for (long unsigned int i = 1; i < USERS_NUM + 1; i++) { // Instead of linePartsVector.size() we use MAX_FEATURES_NUM
-			data[dataIndex] = linePartsVector[i];
-			dataIndex++;
-		}
-		numOfLines++;
-
-		if (numOfLines == MOVIES_NUM + 1)
-			break;
-
-	}
-}
-
-void parseNameIdMapping(map<int, string>& nameIdMapping)
-{
-	/*****
-	 * Parse nameIdMapping.csv that specifies in which movie name each line
-	 * corresponds to
-	 *****/
-
-	string NAME_ID_MAPPING_PATH = "nameIdMapping.csv";
-	ifstream inputFile(NAME_ID_MAPPING_PATH.c_str());
-
-	string line;
-	while (getline(inputFile, line))
-	{
-		istringstream iss(line);
-
-		vector<string> linePartsVector;
-		while (iss.good()) {
-			string substr;
-			getline(iss, substr, ',');
-			linePartsVector.push_back(substr);
-		}
-
-		int movieId = atoi(linePartsVector[0].c_str());
-		string movieName = linePartsVector[1];
-		for (long unsigned int i = 2; i < linePartsVector.size(); i++)
-			movieName += " " + linePartsVector[i];
-
-		nameIdMapping[movieId] = movieName;
-
-	}
-}
-
-void copyArray(float* in, float* out, int arraySize)
+void copyArray(const float* in, float* out, int arraySize)
 {
 	/*****
 	 * Copy array in to array out
@@ -130,7 +60,7 @@ void copyArray(float* in, float* out, int arraySize)
 		out[i] = in[i];
 }
 
-void calcDistances(float* data, float* dists)
+void calcDistances(const float* data, float* dists)
 {
 	/*****
 	 * Calculate the distance of movie with id MOVIE_ID from
@@ -147,7 +77,7 @@ void calcDistances(float* data, float* dists)
 	}
 }
 
-bool containsMovieId(vector<int> moviesIdVector, int movieId)
+bool containsMovieId(std::vector<int> moviesIdVector, int movieId)
 {
 	/*****
 	 * Return 1 iff moviesIdVector contains movieId
@@ -158,7 +88,7 @@ bool containsMovieId(vector<int> moviesIdVector, int movieId)
 	return 0;
 }
 
-void getKNearestNeighbors(float* dists, vector<int>& moviesIdVector, vector<float>& moviesDists)
+void getKNearestNeighbors(float* dists, std::vector<int>& moviesIdVector, std::vector<float>& moviesDists)
 {
 	/*****
 	 * Get k closest movies
@@ -181,14 +111,14 @@ void getKNearestNeighbors(float* dists, vector<int>& moviesIdVector, vector<floa
 	}
 }
 
-void getRecommendations(float* dists, map<int, string>& nameIdMapping)
+void getRecommendations(float* dists, const char* const nameIdMapping[])
 {
 	/*****
 	 * Get the k recommendations for each movie
 	 *****/
 
-	vector<int> moviesIdVector;
-	vector<float> moviesDists;
+	std::vector<int> moviesIdVector;
+	std::vector<float> moviesDists;
 	getKNearestNeighbors(dists, moviesIdVector, moviesDists);
 
 	cout << "Recommendation system start to make inference" << endl;
@@ -201,19 +131,10 @@ void getRecommendations(float* dists, map<int, string>& nameIdMapping)
 
 int main(int argc, char **argv)
 {
-	float* data = (float *) malloc (MOVIES_NUM * USERS_NUM * sizeof(float));
-	cout << "Started reading dataset..." << endl;
-	parseDataset(data);
-	cout << "Finished reading dataset..." << endl;
-
-	map<int, string> nameIdMapping;
-	cout << "Started reading name id mapping..." << endl;
-	parseNameIdMapping(nameIdMapping);
-	cout << "Finished reading name id mapping..." << endl;
-
-	cout << "Input movie id = " << MOVIE_ID << endl;
-
 	perf_counter HW_counter, SW_counter;
+
+	cout << "KNN based Recommendation System Acceleration" << endl;
+	cout << "Input movie id = " << MOVIE_ID << endl;
 
 	// SOFTWARE EUCLIDEAN DISTANCE CALCULATION START
 	float* dists = (float *) malloc (MOVIES_NUM * sizeof(float));
@@ -275,7 +196,7 @@ int main(int argc, char **argv)
 	for(int i = 0; i < MOVIES_NUM; i++)
 	{
 		difference = dists[i] - dists_hw[i];
-		if (abs(difference) < 0.001)
+		if (std::abs(difference) < 0.001)
 			correct++;
 		else
 			cout << "dists[" << i << "] = " << dists[i] << ", dists_hw[" << i << "] = " << dists_hw[i] << endl;
@@ -285,10 +206,9 @@ int main(int argc, char **argv)
 	printf("Correct = %d, Score = %f \n", correct, score);
 	// CORRECTNESS CALCULATION END
 
-	free(data);
-	free(dists);
 	sds_free(data_hw);
 	sds_free(dists_hw);
+	free(dists);
 
 	return 0;
 }
